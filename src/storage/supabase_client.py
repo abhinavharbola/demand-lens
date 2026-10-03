@@ -1,6 +1,15 @@
+import json
+from datetime import datetime, timezone
+
 from supabase import create_client
 
 from src.utils.config import CONFIG
+
+FORECAST_RUN_COLUMNS = ["model", "source", "fold", "n_series", "mape", "wape", "mase"]
+ANOMALY_FLAG_COLUMNS = [
+    "date", "store_nbr", "family", "sales", "forecast", "residual",
+    "control_limit_flag", "isoforest_flag",
+]
 
 
 def get_client():
@@ -10,9 +19,25 @@ def get_client():
     return create_client(env["supabase_url"], env["supabase_key"])
 
 
-def save_forecast_run(run_metadata: dict):
-    client = get_client()
-    return client.table("forecast_runs").insert(run_metadata).execute()
+def _json_records(df):
+    return json.loads(df.to_json(orient="records"))
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def save_forecast_runs(runs_df):
+    records = _json_records(runs_df[FORECAST_RUN_COLUMNS])
+    created_at = _now()
+    for record in records:
+        record["created_at"] = created_at
+    return (
+        get_client()
+        .table("forecast_runs")
+        .upsert(records, on_conflict="model,source,fold")
+        .execute()
+    )
 
 
 def fetch_forecast_runs(limit=20):
@@ -37,9 +62,16 @@ def fetch_reports(limit=20):
 
 
 def save_anomaly_flags(flags_df):
-    client = get_client()
-    records = flags_df.to_dict(orient="records")
-    return client.table("anomaly_flags").insert(records).execute()
+    records = _json_records(flags_df[ANOMALY_FLAG_COLUMNS])
+    created_at = _now()
+    for record in records:
+        record["created_at"] = created_at
+    return (
+        get_client()
+        .table("anomaly_flags")
+        .upsert(records, on_conflict="date,store_nbr,family")
+        .execute()
+    )
 
 
 def fetch_anomaly_flags(limit=500):

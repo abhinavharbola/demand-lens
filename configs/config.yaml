@@ -1,17 +1,13 @@
 data:
   kaggle_outputs_dir: "kaggle_outputs"
   files:
-    subset: "retailcast_subset.parquet"
     subset_config: "subset_config.json"
     stationarity: "stationarity_results.csv"
-    activation_diagnostics: "series_activation_diagnostics.csv"
-    features: "retailcast_features.parquet"
     demand_pattern: "demand_pattern_classification.csv"
     prophet_results: "prophet_results.csv"
     sarima_results: "sarima_results.csv"
     ml_results: "ml_results.csv"
     final_holdout_predictions: "final_holdout_predictions.parquet"
-    lightgbm_feature_importance: "lightgbm_feature_importance.csv"
     anomaly_results: "anomaly_results.parquet"
     anomaly_eval_metrics: "anomaly_eval_metrics.csv"
     cost_of_error: "cost_of_error.json"
@@ -54,7 +50,4 @@ llm:
 grounding_check:
   relative_tolerance: 0.05
   absolute_tolerance_currency: 5.0
-  # Most bare-number facts here (MASE, precision, recall) live in a 0-1 range, so this
-  # must stay small - it's an absolute error budget, not a percentage. 0.5 previously let
-  # a claim like "0.15" pass as grounded against a true value of "0.632" (76% off).
   absolute_tolerance_default: 0.05

@@ -15,14 +15,16 @@ def configure_tracking():
     return True
 
 
-def fetch_recent_runs(experiment_name="retailcast_ml_models", max_results=20):
+def fetch_recent_runs(experiment_name="demandlens_ml_models", max_results=20):
     if not configure_tracking():
         return []
     client = mlflow.tracking.MlflowClient()
     experiment = client.get_experiment_by_name(experiment_name)
     if experiment is None:
         return []
-    runs = client.search_runs(experiment.experiment_id, max_results=max_results, order_by=["start_time DESC"])
+    runs = client.search_runs(
+        [experiment.experiment_id], max_results=max_results, order_by=["start_time DESC"]
+    )
     return [
         {
             "run_id": r.info.run_id,
