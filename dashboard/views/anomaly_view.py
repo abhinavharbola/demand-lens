@@ -29,12 +29,20 @@ def load_anomaly_data():
     return results, eval_metrics
 
 
-results, eval_metrics = load_anomaly_data()
+try:
+    results, eval_metrics = load_anomaly_data()
+except FileNotFoundError as e:
+    st.error(
+        f"Pipeline output not found: {e.filename}. Download the Kaggle outputs into "
+        f"{DATA_DIR} as described in the README."
+    )
+    st.stop()
 
 METHOD_LABELS = {
     "control_limit_flag_injected": ("Control limits", "Per-series threshold at k\u00d7std of clean residuals."),
-    "isoforest_flag_injected": ("Isolation Forest", "Contamination fixed at 5%, so recall is structurally "
-                                                      "capped by that rate regardless of the true anomaly count."),
+    "isoforest_flag_injected": ("Isolation Forest", "Fit on clean holdout features, then scored on the "
+                                                      "injected data. The 5% contamination only sets the "
+                                                      "threshold on clean data, so recall is not capped by it."),
 }
 
 st.markdown('<div class="rc-eyebrow" style="--rc-eyebrow-color:{}">Synthetic-injection evaluation</div>'
@@ -57,9 +65,6 @@ for i, (col, (method, row)) in enumerate(zip(method_cols, eval_metrics.iterrows(
             f'</div><div class="rc-card-body">{note}</div></div>',
             unsafe_allow_html=True,
         )
-        # One chart per method (rather than one grouped chart for both) - keeps every
-        # bar on its own row with no offset/banding, so axis labels can't collide
-        # regardless of how narrow the column gets.
         with st.container(border=True, key=f"eval_chart_{i}"):
             metric_df = pd.DataFrame({
                 "metric": ["precision", "recall", "f1"],
@@ -108,8 +113,6 @@ with st.container(border=True, key="flagged_table"):
     display_cols = ["date", "store_nbr", "family", "sales", "forecast", "residual",
                      "control_limit_flag", "isoforest_flag"]
     flagged_display = flagged[display_cols].sort_values("date")
-    # Table shows a clean date (no "00:00:00" time component); the datetime dtype is
-    # kept in flagged_display itself for the Supabase-logging step below.
     table_view = flagged_display.copy()
     table_view["date"] = table_view["date"].dt.strftime("%Y-%m-%d")
 
@@ -127,7 +130,7 @@ with st.container(border=True, key="flagged_table"):
         to_log["date"] = to_log["date"].dt.strftime("%Y-%m-%d")
         try:
             save_anomaly_flags(to_log)
-            st.success(f"Logged {len(to_log)} rows to Supabase.")
+            st.success(f"Saved {len(to_log)} rows to Supabase (existing flags for the same series and date are updated).")
         except Exception as e:
             st.error(f"Logging failed: {e}")
 

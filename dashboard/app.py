@@ -6,13 +6,8 @@ sys.path.insert(0, str(APP_DIR.parent))
 
 import streamlit as st
 
-from dashboard.theme import inject
 
-st.set_page_config(page_title="RetailCast", page_icon=":material/monitoring:", layout="wide")
-
-# Injected once here (not per-page): app.py's top-level code runs on every navigation
-# within st.navigation, before the selected page's script body executes.
-inject()
+st.set_page_config(page_title="DemandLens", page_icon=":material/monitoring:", layout="wide")
 
 home = st.Page(str(APP_DIR / "views" / "home.py"), title="Home Page", icon=":material/home:", default=True)
 overview = st.Page(str(APP_DIR / "views" / "overview.py"), title="Overview", icon=":material/bar_chart:")

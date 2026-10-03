@@ -1,3 +1,4 @@
+import html
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,24 +21,24 @@ page_header(
     eyebrow="GenAI results brief - grounding verified",
     title="AI-Generated Results Report",
     subtitle="Every number the model writes is checked against the same facts it was "
-             "given. Nothing here is taken on faith.",
+             "given, and the result is shown next to the report. Reports are displayed "
+             "and saved even when the check flags claims.",
     accent="ai",
 )
 
 DATA_DIR = str(Path(CONFIG["data"]["kaggle_outputs_dir"]))
-# Shared by all three "Key metrics at a glance" charts (see render_model_mase_chart and
-# render_anomaly_method_chart) so their boxes come out the same height by construction.
 CHART_BOX_HEIGHT = 130
 
 
-def build_report_markdown(text, facts, provider, grounding_ratio, created_at=None):
+def build_report_markdown(text, facts, provider, grounding_ratio, created_at=None, verifiable=True):
     created_at = created_at or datetime.now(timezone.utc).isoformat()
+    grounding_text = f"{grounding_ratio * 100:.0f}%" if verifiable else "n/a (no numeric claims to verify)"
     facts_lines = "\n".join(f"- **{k}**: {v}" for k, v in facts.items())
-    return f"""# RetailCast AI Report
+    return f"""# DemandLens AI Report
 
 **Generated:** {created_at}
 **Provider:** {provider}
-**Grounding ratio:** {grounding_ratio * 100:.0f}%
+**Grounding ratio:** {grounding_text}
 
 ---
 
@@ -53,15 +54,16 @@ def build_report_markdown(text, facts, provider, grounding_ratio, created_at=Non
 
 def download_filename(provider, created_at):
     safe_ts = str(created_at).replace(":", "-").replace(" ", "_")
-    return f"retailcast_report_{provider}_{safe_ts}.md"
+    return f"demandlens_report_{provider}_{safe_ts}.md"
 
 
 def render_model_mase_chart(facts):
+    sarima_label = f"sarima ({facts['n_series_sarima']} series)"
     df = pd.DataFrame({
-        "model": [facts["best_ml_model"], "prophet", "sarima"],
+        "model": [facts["best_ml_model"], "prophet", sarima_label],
         "mase": [facts["best_ml_mase_holdout"], facts["prophet_mase_holdout"], facts["sarima_mase_holdout"]],
     })
-    df["is_best"] = df["model"] == facts["best_ml_model"]
+    df["is_best"] = df["mase"] == df["mase"].iloc[:2].min()
     chart = (
         alt.Chart(df)
         .mark_bar(cornerRadiusEnd=2)
@@ -71,19 +73,12 @@ def render_model_mase_chart(facts):
             color=alt.condition(alt.datum.is_best, alt.value(TOKENS["forecast"]), alt.value(TOKENS["neutral"])),
             tooltip=["model", alt.Tooltip("mase:Q", format=".3f")],
         )
-        # Title lives inside the Vega-Lite spec (not an st.caption above the container)
-        # so its height is identical across all three "Key metrics" boxes by construction:
-        # Vega-Lite reserves the same fixed title band for any single-line title regardless
-        # of its text, whereas stacking a variable number of st.caption lines above each
-        # container (as this used to do) pushed some boxes' tops lower than others.
         .properties(height=CHART_BOX_HEIGHT, title="MASE by model")
     )
     return altair_theme(chart)
 
 
 def render_anomaly_method_chart(precision, recall, title):
-    # One chart per method (no yOffset grouping) - every bar gets its own row so axis
-    # labels can't collide, regardless of how narrow the column gets.
     df = pd.DataFrame({"metric": ["precision", "recall"], "score": [precision, recall]})
     chart = (
         alt.Chart(df)
@@ -148,7 +143,7 @@ if has_report:
     st.markdown('<div class="rc-eyebrow">Key metrics at a glance</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        st.caption("Forecasting: MASE on holdout (lower is better)")
+        st.caption("Forecasting: per-series MASE on holdout, averaged (lower is better)")
         with st.container(border=True, key="model_compare_ai"):
             st.altair_chart(render_model_mase_chart(facts), width='stretch')
     with col2:
@@ -181,11 +176,8 @@ if has_report:
         )
 
     st.markdown("<div style='height:0.9rem'></div>", unsafe_allow_html=True)
-    st.markdown(grounding_bar(grounding["grounded_ratio"]), unsafe_allow_html=True)
+    st.markdown(grounding_bar(grounding["grounded_ratio"], grounding["verifiable"]), unsafe_allow_html=True)
 
-    # Explicit equal-height spacers on both sides of the eyebrow (instead of relying on
-    # Streamlit's default inter-element gap above it plus the eyebrow's own smaller
-    # margin-bottom below it, which produced a bigger gap above "Narrative" than below it).
     st.markdown("<div style='height:0.9rem'></div>", unsafe_allow_html=True)
     st.markdown('<div class="rc-eyebrow" style="--rc-eyebrow-color:{}; margin-bottom:0">Narrative</div>'
                 .format(TOKENS["ai"]), unsafe_allow_html=True)
@@ -197,7 +189,10 @@ if has_report:
     with dl_col:
         st.download_button(
             "Download this report (.md)",
-            data=build_report_markdown(result["text"], facts, result["provider"], grounding["grounded_ratio"], generated_at),
+            data=build_report_markdown(
+                result["text"], facts, result["provider"], grounding["grounded_ratio"],
+                generated_at, grounding["verifiable"],
+            ),
             file_name=download_filename(result["provider"], generated_at),
             mime="text/markdown",
             icon=":material/download:",
@@ -206,7 +201,9 @@ if has_report:
     with claims_col:
         with st.expander("Flagged numeric claims"):
             ungrounded = [c for c in grounding["claims"] if not c["grounded"]]
-            if ungrounded:
+            if not grounding["verifiable"]:
+                st.write("No numeric claims were extracted from the report, so nothing could be verified.")
+            elif ungrounded:
                 st.write(ungrounded)
             else:
                 grounded_claims = [c for c in grounding["claims"] if c["grounded"]]
@@ -224,8 +221,8 @@ if has_report:
             for a in result["attempts"]:
                 status_badge = badge("ok", "good") if a["success"] else badge("failed", "bad")
                 st.markdown(
-                    f'{status_badge} <strong>{a["provider"]}</strong> '
-                    f'<span style="color:{TOKENS["text_muted"]}">{a["error"] or "succeeded"}</span>',
+                    f'{status_badge} <strong>{html.escape(str(a["provider"]))}</strong> '
+                    f'<span style="color:{TOKENS["text_muted"]}">{html.escape(str(a["error"] or "succeeded"))}</span>',
                     unsafe_allow_html=True,
                 )
 
@@ -239,7 +236,7 @@ try:
         for r in past:
             created_at = r.get("created_at", "unknown date")
             provider = r.get("provider", "unknown provider")
-            ratio = r.get("grounding_ratio", 0)
+            ratio = r.get("grounding_ratio") or 0
             with st.expander(f"{created_at} \u2022 {provider} \u2022 {ratio * 100:.0f}% grounded"):
                 st.markdown(grounding_pill(ratio), unsafe_allow_html=True)
                 st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)

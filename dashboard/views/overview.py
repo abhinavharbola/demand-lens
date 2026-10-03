@@ -22,7 +22,7 @@ page_header(
     eyebrow="Dataset scope",
     title="Dataset Overview",
     subtitle="What was actually run: the store/family subset, its demand-pattern mix, "
-             "and how stationary each series is before any model sees it.",
+             "and how stationary each series is once pre-activation rows are removed.",
 )
 
 DATA_DIR = Path(CONFIG["data"]["kaggle_outputs_dir"])
@@ -31,14 +31,21 @@ FILES = CONFIG["data"]["files"]
 
 @st.cache_data
 def load_overview_data():
-    with open(DATA_DIR / FILES["subset_config"]) as f:
+    with open(DATA_DIR / FILES["subset_config"], encoding="utf-8") as f:
         config = json.load(f)
     stationarity = pd.read_csv(DATA_DIR / FILES["stationarity"])
     pattern = pd.read_csv(DATA_DIR / FILES["demand_pattern"])
     return config, stationarity, pattern
 
 
-config, stationarity, pattern = load_overview_data()
+try:
+    config, stationarity, pattern = load_overview_data()
+except FileNotFoundError as e:
+    st.error(
+        f"Pipeline output not found: {e.filename}. Download the Kaggle outputs into "
+        f"{DATA_DIR} as described in the README."
+    )
+    st.stop()
 
 col1, col2 = st.columns(2)
 with col1:
@@ -53,14 +60,18 @@ with col2:
 st.divider()
 st.markdown('<div class="rc-eyebrow">Demand pattern classification</div>', unsafe_allow_html=True)
 st.caption(
-    "Syntetos-Boylan classification (ADI / CV\u00b2). MAPE is unreliable on "
-    "intermittent/erratic series - see the Forecast Explorer's WAPE/MASE for those."
+    "Syntetos-Boylan classification (ADI / CV\u00b2), computed on each series after its "
+    "pre-activation rows are removed. MAPE is unreliable on intermittent/erratic series, "
+    "so see the Forecast Explorer's WAPE/MASE for those."
 )
 
 with st.container(border=True, key="pattern_card"):
     counts = pattern["pattern"].value_counts().reset_index()
     counts.columns = ["pattern", "count"]
-    pattern_order = ["smooth", "intermittent", "erratic", "lumpy"]
+    pattern_order = [
+        p for p in ["smooth", "intermittent", "erratic", "lumpy", "no_demand"]
+        if p in set(counts["pattern"])
+    ]
     pattern_colors = {p: TOKENS[DEMAND_PATTERN_KIND.get(p, "neutral")] for p in pattern_order}
 
     chart = (

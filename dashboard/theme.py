@@ -1,21 +1,3 @@
-"""
-RetailCast design system.
-
-One place for color tokens, typography, and small render helpers so every page reads as
-one product instead of five separate Streamlit defaults. The core idea: color is a legend,
-not decoration. Every card gets a 3px left edge in one of four colors, and that color means
-the same thing everywhere in the app:
-
-    gray   -> dataset / configuration (ground truth about what was run)
-    teal   -> forecast results (model output, backtested)
-    amber  -> anomaly detection results (flags, control limits)
-    indigo -> AI-generated narrative (the one thing in the app that isn't a direct
-              computation - it's the LLM's interpretation, verified but still generated)
-
-Import `inject()` once per page (cheap, idempotent) and use the helpers below instead of
-raw st.markdown/st.metric calls for anything that should carry that color coding.
-"""
-
 import streamlit as st
 
 TOKENS = {
@@ -32,10 +14,6 @@ TOKENS = {
     "good": "#2E9457",
     "bad": "#C1493F",
     "neutral": "#8C8779",
-    # Lighter than "neutral" specifically for de-emphasized chart fills (e.g. non-winning
-    # bars in a comparison chart) - a large solid area at "neutral"'s darkness reads as
-    # heavy/muddy next to a highlight color, whereas a thin line or small badge at that
-    # same darkness reads fine. Bars need a lighter touch; text/lines keep using "neutral".
     "chart_muted": "#D3CBBC",
 }
 
@@ -47,7 +25,6 @@ html, body, [class*="css"] {{
     font-family: 'Public Sans', sans-serif;
 }}
 
-/* ---- page chrome ---- */
 .stApp {{
     background: {TOKENS["bg"]};
 }}
@@ -61,7 +38,6 @@ hr {{
     margin: 1.4rem 0;
 }}
 
-/* ---- headers ---- */
 .rc-eyebrow {{
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.72rem;
@@ -71,9 +47,6 @@ hr {{
     color: var(--rc-eyebrow-color, {TOKENS["text_muted"]});
     margin-bottom: 0.35rem;
 }}
-/* Page-level eyebrow+title (page_header()) is centered; inline section eyebrows used
-   elsewhere in a page's body (e.g. "Explore", "Key metrics at a glance") stay left-
-   aligned via the base .rc-eyebrow rule above - this modifier only applies where added. */
 .rc-eyebrow--page {{
     text-align: center;
 }}
@@ -95,7 +68,6 @@ hr {{
     text-align: center;
 }}
 
-/* ---- cards (static / text content only - can't hold live widgets) ---- */
 .rc-card {{
     background: {TOKENS["surface"]};
     border: 1px solid {TOKENS["border"]};
@@ -124,17 +96,9 @@ hr {{
     line-height: 1.5;
 }}
 
-/* ---- side-by-side comparison cards (e.g. two detection methods) - fixed min-height so
-   paired cards (and whatever sits below them, like a chart) line up across columns even
-   when one card's body text runs longer than the other's ---- */
 .rc-compare-card {{ min-height: 172px; }}
-/* Nav cards on Home use real st.container(border=True) blocks (see home.py) rather than
-   raw HTML, specifically so st.page_link can render inside the box - markdown HTML can't
-   contain live Streamlit widgets. min-height keeps all 4 level regardless of description
-   length; accent color comes from the accent_rails mechanism like every other container. */
 .st-key-nav_0, .st-key-nav_1, .st-key-nav_2, .st-key-nav_3 {{ min-height: 168px !important; }}
 
-/* ---- stat blocks (custom, mono numerals) ---- */
 .rc-stat-value {{
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 600;
@@ -151,7 +115,6 @@ hr {{
     margin-top: 0.25rem;
 }}
 
-/* ---- badges / chips ---- */
 .rc-badge {{
     display: inline-block;
     font-family: 'IBM Plex Mono', monospace;
@@ -170,7 +133,6 @@ hr {{
 .rc-badge--good     {{ background: rgba(46,148,87,0.12);   color: {TOKENS["good"]}; border-color: rgba(46,148,87,0.35); }}
 .rc-badge--bad      {{ background: rgba(193,73,63,0.12);   color: {TOKENS["bad"]}; border-color: rgba(193,73,63,0.35); }}
 
-/* ---- status pill (grounding ratio, etc: bigger, standalone) ---- */
 .rc-pill {{
     display: inline-flex;
     align-items: center;
@@ -187,7 +149,6 @@ hr {{
 .rc-pill--bad  {{ background: rgba(193,73,63,0.10);   color: {TOKENS["bad"]}; border-color: rgba(193,73,63,0.4); }}
 .rc-pill-dot {{ width: 7px; height: 7px; border-radius: 50%; background: currentColor; }}
 
-/* ---- grounding bar: the pct/label pill and its caveat text as one row ---- */
 .rc-grounding-bar {{
     display: flex;
     align-items: baseline;
@@ -208,7 +169,6 @@ hr {{
     white-space: nowrap;
 }}
 
-/* ---- native Streamlit widgets, restyled to match ---- */
 [data-testid="stMetricValue"] {{
     font-family: 'IBM Plex Mono', monospace !important;
     font-weight: 600 !important;
@@ -224,43 +184,22 @@ hr {{
     border: 1px solid {TOKENS["border"]};
     border-radius: 4px;
 }}
-/* Defensive: make sure markdown text content always fills its column instead of
-   shrinking to some narrower intrinsic width (was causing early line-wraps with dead
-   space on the right in card bodies). */
 div[data-testid="stMarkdownContainer"] {{
     width: 100%;
 }}
 
-/* container-key targeted accent rails (bordered st.container blocks that must hold
-   live widgets/dataframes/charts, so can't be plain markdown HTML) */
 {{accent_rail_rules}}
 
-/* Overview page: store/family badge lists sit side by side and can wrap to different
-   line counts (10 stores vs 6 longer family names) - fixed min-height keeps them level. */
 .st-key-selected_stores, .st-key-selected_families {{ min-height: 120px !important; }}
 
-/* AI Report page: the MASE chart box and the two anomaly-method chart boxes sit side by
-   side. Primary fix is structural now (see ai_report.py: all three containers hold only
-   a chart at the same height, no title text inside any of them, so they're equal by
-   construction) - this is just a safety-net floor, not the mechanism doing the real work. */
 .st-key-model_compare_ai, .st-key-anomaly_chart_0, .st-key-anomaly_chart_1 {{ min-height: 165px !important; }}
 
-/* Justify only the narrative's body paragraphs (Word-style ragged-right becomes flush) -
-   headings, list items, and the metric tables inside the same card are untouched since
-   this targets <p> specifically, not the container as a whole. */
 .st-key-narrative_card p {{ text-align: justify; text-justify: inter-word; }}
 </style>
 """
 
 
 def inject(accent_rails: dict[str, str] | None = None) -> None:
-    """Injects the shared stylesheet. Call once near the top of every page.
-
-    accent_rails: optional {container_key: token_name} map. For any st.container(border=True,
-    key=...) on the page that should carry a colored left edge, pass its key and which
-    token color it should use (e.g. {"model_compare": "forecast"}). Uses Streamlit's
-    `st-key-<key>` class, which is the documented hook for targeting a specific container.
-    """
     rules = []
     if accent_rails:
         for key, token in accent_rails.items():
@@ -286,8 +225,6 @@ def page_header(eyebrow: str, title: str, subtitle: str = "", accent: str = "neu
 
 
 def card(title: str, body: str, accent: str = "neutral") -> None:
-    """Static text-only card. Cannot contain live Streamlit widgets - use a
-    st.container(border=True, key=...) + inject(accent_rails=...) for that instead."""
     st.markdown(
         f'<div class="rc-card rc-card--{accent}">'
         f'<div class="rc-card-title">{title}</div>'
@@ -298,7 +235,6 @@ def card(title: str, body: str, accent: str = "neutral") -> None:
 
 
 def badge(text: str, kind: str = "neutral") -> str:
-    """Returns an inline badge span - compose these into a row and pass to st.markdown."""
     return f'<span class="rc-badge rc-badge--{kind}">{text}</span>'
 
 
@@ -307,7 +243,6 @@ def badge_row(items: list[str], kind: str = "neutral") -> None:
 
 
 def stat(value: str, label: str) -> str:
-    """Returns HTML for one custom stat block (mono value + eyebrow label)."""
     return (
         f'<div><div class="rc-stat-value">{value}</div>'
         f'<div class="rc-stat-label">{label}</div></div>'
@@ -315,7 +250,6 @@ def stat(value: str, label: str) -> str:
 
 
 def stat_row(stats: list[tuple[str, str]]) -> None:
-    """Renders several stat() blocks evenly spaced in one row."""
     cols = st.columns(len(stats))
     for col, (value, label) in zip(cols, stats):
         with col:
@@ -327,34 +261,33 @@ DEMAND_PATTERN_KIND = {
     "intermittent": "neutral",
     "erratic": "anomaly",
     "lumpy": "bad",
+    "no_demand": "neutral",
 }
 
 
-def grounding_pill(ratio: float) -> str:
-    """Returns HTML for a status pill based on the grounding ratio (0-1)."""
+def _grounding_status(ratio: float, verifiable: bool = True) -> tuple[str, str]:
+    if not verifiable:
+        return "warn", "no numeric claims to verify"
     pct = ratio * 100
     if pct >= 90:
-        kind, label = "good", "grounded"
-    elif pct >= 70:
-        kind, label = "warn", "partially grounded"
-    else:
-        kind, label = "bad", "low grounding"
+        return "good", "grounded"
+    if pct >= 70:
+        return "warn", "partially grounded"
+    return "bad", "low grounding"
+
+
+def grounding_pill(ratio: float, verifiable: bool = True) -> str:
+    kind, label = _grounding_status(ratio, verifiable)
+    prefix = f"{ratio * 100:.0f}% " if verifiable else ""
     return (
         f'<span class="rc-pill rc-pill--{kind}">'
-        f'<span class="rc-pill-dot"></span>{pct:.0f}% {label}</span>'
+        f'<span class="rc-pill-dot"></span>{prefix}{label}</span>'
     )
 
 
-def grounding_bar(ratio: float) -> str:
-    """Same status as grounding_pill, but as one bar with the caveat text folded in,
-    instead of a standalone pill with a separate caption line underneath it."""
-    pct = ratio * 100
-    if pct >= 90:
-        kind, label = "good", "grounded"
-    elif pct >= 70:
-        kind, label = "warn", "partially grounded"
-    else:
-        kind, label = "bad", "low grounding"
+def grounding_bar(ratio: float, verifiable: bool = True) -> str:
+    kind, label = _grounding_status(ratio, verifiable)
+    prefix = f"{ratio * 100:.0f}% " if verifiable else ""
     caveat = (
         "Regex-based numeric check, not full claim verification. It can miss paraphrased "
         "claims with no literal number, and can flag numbers that are correct but simply "
@@ -362,15 +295,13 @@ def grounding_bar(ratio: float) -> str:
     )
     return (
         f'<div class="rc-grounding-bar rc-pill--{kind}">'
-        f'<strong><span class="rc-pill-dot"></span>{pct:.0f}% {label}</strong>'
+        f'<strong><span class="rc-pill-dot"></span>{prefix}{label}</strong>'
         f'<span style="color:{TOKENS["text_muted"]}">{caveat}</span>'
         f'</div>'
     )
 
 
 def altair_theme(chart):
-    """Applies the shared palette/typography to an Altair chart. Call right before
-    st.altair_chart(chart, width='stretch')."""
     return (
         chart.properties(background=TOKENS["surface"])
         .configure_view(strokeWidth=0)
