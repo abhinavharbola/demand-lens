@@ -33,13 +33,16 @@ def test_mase_perfect_forecast_is_zero():
 
 
 def test_mape_all_zero_actuals_returns_nan():
-    # Previously: masked array was empty -> np.mean hit an empty slice and returned NaN
-    # via a runtime warning instead of a deliberate, documented return value.
     assert np.isnan(mape([0, 0, 0], [1, 2, 3]))
 
 
 def test_wape_all_zero_actuals_returns_nan():
-    # Previously: division by zero silently produced inf, which pandas .mean() does NOT
-    # skip the way it skips NaN - one degenerate all-zero-actual fold could poison an
-    # entire averaged metric downstream without raising anything.
     assert np.isnan(wape([0, 0], [1, 2]))
+
+
+def test_mase_short_training_series_returns_nan():
+    assert np.isnan(mase([5, 6], [5, 7], [1, 2, 3]))
+
+
+def test_mase_constant_training_series_returns_nan():
+    assert np.isnan(mase([5, 6], [5, 7], [4] * 30))
