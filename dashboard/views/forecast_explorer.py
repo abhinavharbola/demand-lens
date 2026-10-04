@@ -58,9 +58,10 @@ comparison = build_comparison(prophet, sarima, ml)
 sarima_keys = holdout_series_keys(sarima)
 like_for_like = build_comparison(prophet, sarima, ml, restrict_to=sarima_keys)
 
-best_row = best_full_scope_row(comparison)
-best_mase = float(best_row["mase"])
-full_scope_n = int(best_row["n_series"])
+selected_row = comparison[comparison["model"] == selected_ml_model].iloc[0]
+selected_mase = float(selected_row["mase"])
+full_scope_n = int(selected_row["n_series"])
+reference_row = best_full_scope_row(comparison)
 
 if holdout_model is not None and holdout_model != selected_ml_model:
     st.warning(
@@ -70,16 +71,16 @@ if holdout_model is not None and holdout_model != selected_ml_model:
 
 st.markdown(
     f'<div class="rc-card rc-card--forecast">'
-    f'<div class="rc-card-title">Best on holdout ({full_scope_n}-series scope): {str(best_row["model"]).upper()}</div>'
+    f'<div class="rc-card-title">Selected on CV folds ({full_scope_n}-series ML model): {selected_ml_model.upper()}</div>'
     f'<div class="rc-card-body">'
-    f'<span class="rc-stat-value" style="font-size:1.5rem">{best_mase:.3f}</span> MASE'
+    f'<span class="rc-stat-value" style="font-size:1.5rem">{selected_mase:.3f}</span> holdout MASE'
     + (
         f' &nbsp;\u2022&nbsp; <span style="color:{TOKENS["good"]}">below 1.0: error under the in-sample '
-        f'seasonal-naive (lag-7) scale</span>' if best_mase < 1
+        f'seasonal-naive (lag-7) scale</span>' if selected_mase < 1
         else ' &nbsp;\u2022&nbsp; at or above the in-sample seasonal-naive scale (MASE \u2265 1.0)'
     )
-    + f' &nbsp;\u2022&nbsp; {float(best_row["mape"]):.2f}% MAPE &nbsp;\u2022&nbsp; '
-    f'{float(best_row["wape"]):.2f}% WAPE'
+    + f' &nbsp;\u2022&nbsp; {float(selected_row["mape"]):.2f}% MAPE &nbsp;\u2022&nbsp; '
+    f'{float(selected_row["wape"]):.2f}% WAPE'
     f'</div></div>',
     unsafe_allow_html=True,
 )
@@ -90,7 +91,7 @@ st.markdown('<div class="rc-eyebrow" style="--rc-eyebrow-color:{}">Model compari
 with st.container(border=True, key="model_compare"):
     chart_df = comparison.copy()
     chart_df["label"] = chart_df["model"] + " (" + chart_df["n_series"].astype(str) + " series)"
-    chart_df["is_best"] = chart_df["model"] == best_row["model"]
+    chart_df["is_selected"] = chart_df["model"] == selected_ml_model
 
     bars = (
         alt.Chart(chart_df)
@@ -99,7 +100,7 @@ with st.container(border=True, key="model_compare"):
             y=alt.Y("label:N", sort="-x", title=None),
             x=alt.X("mase:Q", title="MASE (lower is better)"),
             color=alt.condition(
-                alt.datum.is_best,
+                alt.datum.is_selected,
                 alt.value(TOKENS["forecast"]),
                 alt.value(TOKENS["chart_muted"]),
             ),
@@ -117,7 +118,9 @@ with st.container(border=True, key="model_compare"):
     st.caption(
         "MASE is scaled by each series' in-sample seasonal-naive (lag-7) error, so the dashed "
         "line at 1.0 marks that in-sample scale, not a naive forecast scored on the holdout. "
-        f"The highlighted bar is the best model among those covering all {full_scope_n} series."
+        "The highlighted bar is the ML model selected on the CV folds, not the lowest holdout score. "
+        f"Lowest holdout MASE among the {full_scope_n}-series models: {str(reference_row['model']).upper()} "
+        f"({float(reference_row['mase']):.3f}), shown for reference only."
     )
 
     st.dataframe(

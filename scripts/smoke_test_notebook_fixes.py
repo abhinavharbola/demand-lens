@@ -108,6 +108,31 @@ def check_isolation_forest_not_capped():
     )
 
 
+def check_control_limits_are_centered():
+    ns = load(NB05, ["control_limit_flags"], {"np": np, "pd": pd})
+    flags_fn = ns["control_limit_flags"]
+
+    rng = np.random.default_rng(5)
+    df = pd.DataFrame({"store_nbr": 1, "family": "DAIRY", "residual": 40.0 + rng.normal(0, 5, size=300)})
+    biased_flag_rate = flags_fn(df)["control_limit_flag"].mean()
+
+    spiked = df.copy()
+    spiked.loc[0, "residual"] = 100.0
+    spike_flagged = int(flags_fn(spiked)["control_limit_flag"].iloc[0])
+
+    reference = df.assign(clean_mean=40.0, clean_std=5.0)
+    reference["residual"] = reference["residual"] + 100.0
+    reference_flags = flags_fn(
+        reference, center_reference_col="clean_mean", std_reference_col="clean_std"
+    )["control_limit_flag"]
+
+    return check(
+        "control limits are centered on the clean mean residual, so a constant forecast bias is not flagged "
+        f"(flag rate under bias {biased_flag_rate:.1%}, spike flagged, reference stats honored)",
+        biased_flag_rate < 0.05 and spike_flagged == 1 and bool((reference_flags == 1).all()),
+    )
+
+
 def check_run_fold_raises():
     ns = load(NB04, ["run_fold"], {"np": np, "pd": pd, "FEATURE_COLS": [], "TARGET": "sales", "CATEGORICAL_COLS": []})
     dummy = pd.DataFrame({"sales": [1, 2, 3]})
@@ -219,6 +244,7 @@ def main():
         check_injection_baseline(),
         check_clean_reference_scaling(),
         check_isolation_forest_not_capped(),
+        check_control_limits_are_centered(),
         check_run_fold_raises(),
         check_features_have_no_forecast_window_leakage(),
         check_per_series_metrics(),

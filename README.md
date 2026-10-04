@@ -2,19 +2,21 @@
 
 **Retail Demand Forecasting & Anomaly Benchmark**
 
-A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost across 60 retail series using expanding-window walk-forward cross-validation. It uses Kaggle’s free notebooks for training, Supabase’s free Postgres tier for storage, and free-tier Groq/NIM/Gemini APIs for automated reporting with provider fallback.
+A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost on 60 store-family series (10 stores x 6 families) from the Favorita Store Sales dataset, using expanding-window walk-forward CV and a 15-day holdout. Training runs on Kaggle's free notebooks, storage on Supabase's free Postgres tier, and reporting on free-tier Groq/NIM/Gemini APIs with provider fallback.
 
-The project separates heavy computation from a lightweight local Streamlit dashboard. The LLM generates narrative reports and verifies every numeric claim against the original source data before displaying it. Reports are automatically saved to Supabase and can be downloaded as Markdown, including previous reports from the dashboard’s history.
+Heavy computation stays on Kaggle; a lightweight local Streamlit dashboard reads the outputs. An LLM writes a results narrative from a fixed set of facts, and a regex check compares every number in it against those facts. The check result is shown beside the report. Reports are displayed and saved to Supabase even when claims are flagged, and can be downloaded as Markdown, including past reports.
 
 ## Preview
 
-<p align="center">
-  <img src="assets/dashboard.png" width="720" alt="Anomaly Detection view of the project with graphs and tables that can be saved to supabase db on a button-click">
-  <br>
-  <sub>Anomaly Detection view (Synthetic-Injection evaluation)</sub>
-</p>
+Five pages. No screenshots are bundled, since the figures depend on your own pipeline run.
 
-> Additional screenshots in [`assets/`](assets/), one per dashboard view.
+| Page | What it shows |
+|---|---|
+| Home | Scope stats from the pipeline outputs, navigation cards |
+| Overview | Selected stores and families, demand-pattern mix (smooth, intermittent, erratic, lumpy), ADF stationarity results |
+| Forecast Explorer | Holdout model comparison with series scope per model, like-for-like table on SARIMA's series, forecast vs. actual by store and family, past logged comparisons, MLflow run history |
+| Anomaly View | Control limits vs. Isolation Forest on synthetic injection, flagged anomalies on real holdout data, one-click flag logging to Supabase |
+| AI Report | LLM narrative with per-claim grounding check, key-metric charts, provider fallback log, report history with Markdown download |
 
 ## Architecture
 
@@ -47,7 +49,7 @@ No result numbers are quoted here. Every figure comes from your own run of noteb
 **Forecasting (15-day holdout):** `MASE`, `MAPE`, `WAPE` and `n_series` per model.
 
 - Metrics are computed per series, then averaged, for all four models. MASE is scaled by each series' in-sample seasonal-naive (lag-7) error: below 1 means lower error than that scale, not a measured win over a naive forecast on the holdout.
-- Prophet and both ML models cover all 60 series; SARIMA runs on 3 (CPU cost). "Best" only considers full-coverage models, and a second table restricts every model to SARIMA's series.
+- Prophet and both ML models cover all 60 series; SARIMA runs on 3 (CPU cost). The highlighted model is the ML model selected on the CV folds, never the lowest holdout score (shown only as a labeled reference), and a second table restricts every model to SARIMA's series.
 - The ML model passed to the anomaly stage is chosen by mean MASE over the 4 CV folds, never by the holdout.
 - ML models forecast the window directly: lags are at least 21 days, and rolling stats and the oil price are shifted by the horizon, so features never see in-window actuals. `onpromotion` and `is_holiday` are assumed known in advance, as for Prophet and SARIMA.
 - Notebook 01 builds a complete daily calendar per series, filling days absent from `train.csv` (e.g. Dec 25) with zero sales and promotions. Row lags therefore equal calendar lags, and all models see identical series.
@@ -55,7 +57,7 @@ No result numbers are quoted here. Every figure comes from your own run of noteb
 
 **Anomaly detection (50 injected spikes and drops):** precision, recall and F1 per method.
 
-- Control limits flag residuals beyond 2.5x the per-series clean residual std.
+- Control limits flag residuals more than 2.5x the per-series clean residual std away from the clean mean residual. Centering matters: with a biased forecast, an uncentered check flags the bias itself.
 - Isolation Forest is fit on clean holdout features, then scored on the injected data. Its 5% contamination only sets the threshold on clean data, so recall is not capped.
 - Scores reflect detectability of injected anomalies, not real incidents. Flags on real holdout data have no ground truth.
 
@@ -213,7 +215,7 @@ After changing `src/utils/metrics.py`, run `python scripts/sync_notebook_metrics
 - `test_config_consistency.py`: config values compared against the constants and defaults actually in the notebooks (parsed with `ast`): horizon, folds, activation, anomaly parameters, cost table, every ML lag at least the horizon, theme colors vs. dashboard tokens
 - `test_notebook_metrics_sync.py`: drift between `src/utils/metrics.py` and its notebook copies
 - `test_notebooks_valid.py`: each `.ipynb` is a real notebook, valid against the nbformat schema with unique cell ids
-- `test_notebook_smoke.py`: notebook functions on synthetic data: no in-window leakage into features, per-series metric scoring, fold construction (identical in notebooks 03 and 04), anomaly injection scale, clean-reference scaling, Isolation Forest not capped by contamination, `run_fold` rejecting unknown models
+- `test_notebook_smoke.py`: notebook functions on synthetic data: no in-window leakage into features, per-series metric scoring, fold construction (identical in notebooks 03 and 04), anomaly injection scale, clean-reference scaling, Isolation Forest not capped by contamination, control limits centered on the clean mean, `run_fold` rejecting unknown models
 - `test_results.py`: CV-based model selection (never from holdout rows), series scope per model, full-scope best model, like-for-like restriction
 - `test_narrative.py`: fact building, `config` argument honored, no retry on permanent provider errors, one retry on transient ones, API keys redacted from recorded errors
 

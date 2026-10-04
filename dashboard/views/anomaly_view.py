@@ -39,7 +39,7 @@ except FileNotFoundError as e:
     st.stop()
 
 METHOD_LABELS = {
-    "control_limit_flag_injected": ("Control limits", "Per-series threshold at k\u00d7std of clean residuals."),
+    "control_limit_flag_injected": ("Control limits", "Flags residuals more than k\u00d7std from the clean mean residual, per series, so a constant forecast bias is not flagged."),
     "isoforest_flag_injected": ("Isolation Forest", "Fit on clean holdout features, then scored on the "
                                                       "injected data. The 5% contamination only sets the "
                                                       "threshold on clean data, so recall is not capped by it."),
