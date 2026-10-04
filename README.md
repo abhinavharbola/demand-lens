@@ -2,21 +2,19 @@
 
 **Retail Demand Forecasting & Anomaly Benchmark**
 
-A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost on 60 store-family series (10 stores x 6 families) from the Favorita Store Sales dataset, using expanding-window walk-forward CV and a 15-day holdout. Training runs on Kaggle's free notebooks, storage on Supabase's free Postgres tier, and reporting on free-tier Groq/NIM/Gemini APIs with provider fallback.
+A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost across 60 retail series using expanding-window walk-forward cross-validation. It uses Kaggle’s free notebooks for training, Supabase’s free Postgres tier for storage, and free-tier Groq/NIM/Gemini APIs for automated reporting with provider fallback.
 
-Heavy computation stays on Kaggle; a lightweight local Streamlit dashboard reads the outputs. An LLM writes a results narrative from a fixed set of facts, and a regex check compares every number in it against those facts. The check result is shown beside the report. Reports are displayed and saved to Supabase even when claims are flagged, and can be downloaded as Markdown, including past reports.
+The project separates heavy computation from a lightweight local Streamlit dashboard. The LLM generates narrative reports and verifies every numeric claim against the original source data before displaying it. Reports are automatically saved to Supabase and can be downloaded as Markdown, including previous reports from the dashboard’s history.
 
 ## Preview
 
-Five pages. No screenshots are bundled, since the figures depend on your own pipeline run.
+<p align="center">
+  <img src="assets/dashboard.png" width="720" alt="Anomaly Detection view of the project with graphs and tables that can be saved to supabase db on a button-click">
+  <br>
+  <sub>Anomaly Detection view (Synthetic-Injection evaluation)</sub>
+</p>
 
-| Page | What it shows |
-|---|---|
-| Home | Scope stats from the pipeline outputs, navigation cards |
-| Overview | Selected stores and families, demand-pattern mix (smooth, intermittent, erratic, lumpy), ADF stationarity results |
-| Forecast Explorer | Holdout model comparison with series scope per model, like-for-like table on SARIMA's series, forecast vs. actual by store and family, past logged comparisons, MLflow run history |
-| Anomaly View | Control limits vs. Isolation Forest on synthetic injection, flagged anomalies on real holdout data, one-click flag logging to Supabase |
-| AI Report | LLM narrative with per-claim grounding check, key-metric charts, provider fallback log, report history with Markdown download |
+> Additional screenshots in [`assets/`](assets/), one per dashboard view.
 
 ## Architecture
 
@@ -44,24 +42,36 @@ flowchart TB
 
 ## Results at a glance
 
-No result numbers are quoted here. Every figure comes from your own run of notebooks 01 to 05 and is read live from `kaggle_outputs/`, so a pasted table would go stale. How to read the results:
+From one run of notebooks 01 to 05: 60 series, 15-day holdout (Aug 1 to Aug 15, 2017, 900 rows). The dashboard shows the same figures live from `kaggle_outputs/`.
 
-**Forecasting (15-day holdout):** `MASE`, `MAPE`, `WAPE` and `n_series` per model.
+**Forecasting (holdout):**
 
-- Metrics are computed per series, then averaged, for all four models. MASE is scaled by each series' in-sample seasonal-naive (lag-7) error: below 1 means lower error than that scale, not a measured win over a naive forecast on the holdout.
-- Prophet and both ML models cover all 60 series; SARIMA runs on 3 (CPU cost). The highlighted model is the ML model selected on the CV folds, never the lowest holdout score (shown only as a labeled reference), and a second table restricts every model to SARIMA's series.
-- The ML model passed to the anomaly stage is chosen by mean MASE over the 4 CV folds, never by the holdout.
-- ML models forecast the window directly: lags are at least 21 days, and rolling stats and the oil price are shifted by the horizon, so features never see in-window actuals. `onpromotion` and `is_holiday` are assumed known in advance, as for Prophet and SARIMA.
-- Notebook 01 builds a complete daily calendar per series, filling days absent from `train.csv` (e.g. Dec 25) with zero sales and promotions. Row lags therefore equal calendar lags, and all models see identical series.
-- SARIMA fixes differencing (`d=0`, `D=1`, period 7) and searches only `p`, `q`, `P`, `Q`, so AIC is comparable. It uses the same regressors as Prophet.
+| Model | Series | MASE | MAPE | WAPE |
+|---|---|---|---|---|
+| LightGBM | 60 | 0.974 | 17.88% | 17.73% |
+| Prophet | 60 | 0.996 | 17.97% | 18.18% |
+| **XGBoost** (selected on CV) | 60 | 1.011 | 19.44% | 18.61% |
+| SARIMA | 3 | 0.838 | 13.26% | 14.84% |
 
-**Anomaly detection (50 injected spikes and drops):** precision, recall and F1 per method.
+Like-for-like on SARIMA's 3 series (MASE): Prophet 0.793, SARIMA 0.838, LightGBM 0.919, XGBoost 0.933.
 
-- Control limits flag residuals more than 2.5x the per-series clean residual std away from the clean mean residual. Centering matters: with a biased forecast, an uncentered check flags the bias itself.
-- Isolation Forest is fit on clean holdout features, then scored on the injected data. Its 5% contamination only sets the threshold on clean data, so recall is not capped.
-- Scores reflect detectability of injected anomalies, not real incidents. Flags on real holdout data have no ground truth.
+- **No model clearly wins.** Across the 60 series, each ML model's paired MASE difference from Prophet is within noise (LightGBM minus Prophet: -0.022, 95% CI -0.110 to +0.082; XGBoost minus Prophet: +0.015, 95% CI -0.113 to +0.173). The ML models win on 58% to 60% of series and have lower median MASE (0.80 and 0.83 vs 0.91), but lose by more on the series they miss.
+- **Selection ignores the holdout.** XGBoost was selected on mean MASE over the 4 CV folds (0.866 vs LightGBM 0.902). LightGBM scores slightly better on the holdout, which is why the holdout is never used for selection.
+- **SARIMA covers 3 series**, so its row is not comparable to the others. Use the like-for-like line.
+- **How the numbers are produced:** metrics are computed per series, then averaged, for all four models. MASE is scaled by each series' in-sample seasonal-naive (lag-7) error, so below 1 means lower error than that scale, not a measured win over a naive forecast on the holdout. The ML models forecast the window directly (lags of at least 21 days, rolling stats and oil price shifted by the horizon), so features never see in-window actuals.
 
-**Cost of error (illustrative, USD):** `cost_of_error.json` estimates forecast-error cost per ML model from per-unit margin assumptions defined in notebook 04 and mirrored in `configs/config.yaml` (a test keeps them in sync). It is not P&L data, and it is included in the AI Report's facts.
+**Anomaly detection (50 injected spikes and drops among 900 holdout rows):**
+
+| Method | Precision | Recall | F1 |
+|---|---|---|---|
+| Control limits (k=2.5) | 0.824 | 0.84 | 0.832 |
+| Isolation Forest (5% contamination) | 0.527 | 0.96 | 0.681 |
+
+- Control limits give cleaner flags (42 true and 9 false positives). Isolation Forest catches nearly everything (48 of 50) but also flags about 43 clean rows, because its 5% contamination sets a threshold that flags about 5% of clean data by construction.
+- Control limits are centered on each series' clean mean residual, so a constant forecast bias is not flagged as an anomaly.
+- Scores reflect how detectable injected anomalies are, not performance on real incidents.
+
+**Cost of error (illustrative, USD, holdout):** XGBoost about $224,480 and LightGBM about $225,702, within 0.5% of each other. These use assumed per-unit margins, not P&L data (see Known limitations). XGBoost's total absolute error is slightly lower (321,086 vs 323,350 units), while LightGBM's per-series MASE is slightly lower, because MASE weights every series equally and cost weights by volume.
 
 ## Tech stack
 
