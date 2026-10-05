@@ -40,9 +40,9 @@ flowchart TB
     end
 ```
 
-## Results at a glance
+## Results
 
-From one run of notebooks 01 to 05: 60 series, 15-day holdout (Aug 1 to Aug 15, 2017, 900 rows). The dashboard shows the same figures live from `kaggle_outputs/`.
+One run of notebooks 01 to 05: 60 series, 15-day holdout (Aug 1 to Aug 15, 2017, 900 rows). The dashboard reads the same figures from `kaggle_outputs/`.
 
 **Forecasting (holdout):**
 
@@ -53,12 +53,12 @@ From one run of notebooks 01 to 05: 60 series, 15-day holdout (Aug 1 to Aug 15, 
 | **XGBoost** (selected on CV) | 60 | 1.011 | 19.44% | 18.61% |
 | SARIMA | 3 | 0.838 | 13.26% | 14.84% |
 
-Like-for-like on SARIMA's 3 series (MASE): Prophet 0.793, SARIMA 0.838, LightGBM 0.919, XGBoost 0.933.
+SARIMA covers only 3 series, so compare it like-for-like on those (MASE): Prophet 0.793, SARIMA 0.838, LightGBM 0.919, XGBoost 0.933.
 
-- **No model clearly wins.** Across the 60 series, each ML model's paired MASE difference from Prophet is within noise (LightGBM minus Prophet: -0.022, 95% CI -0.110 to +0.082; XGBoost minus Prophet: +0.015, 95% CI -0.113 to +0.173). The ML models win on 58% to 60% of series and have lower median MASE (0.80 and 0.83 vs 0.91), but lose by more on the series they miss.
-- **Selection ignores the holdout.** XGBoost was selected on mean MASE over the 4 CV folds (0.866 vs LightGBM 0.902). LightGBM scores slightly better on the holdout, which is why the holdout is never used for selection.
-- **SARIMA covers 3 series**, so its row is not comparable to the others. Use the like-for-like line.
-- **How the numbers are produced:** metrics are computed per series, then averaged, for all four models. MASE is scaled by each series' in-sample seasonal-naive (lag-7) error, so below 1 means lower error than that scale, not a measured win over a naive forecast on the holdout. The ML models forecast the window directly (lags of at least 21 days, rolling stats and oil price shifted by the horizon), so features never see in-window actuals.
+- **No clear winner.** The three 60-series models are within 0.04 MASE of each other. No significance test is included in the repo.
+- **Selection ignores the holdout.** XGBoost was chosen on mean MASE over the 4 CV folds (0.866 vs 0.902 for LightGBM), even though LightGBM scores slightly better on the holdout.
+- **Metric definitions.** Metrics are computed per series, then averaged. MASE is scaled by each series' in-sample seasonal-naive (lag-7) error, so it is not a comparison against a naive forecast on the holdout.
+- **Leakage control.** ML features use lags of at least 21 days, and rolling stats and oil price are shifted by the horizon, so no feature sees in-window actuals.
 
 **Anomaly detection (50 injected spikes and drops among 900 holdout rows):**
 
@@ -67,19 +67,21 @@ Like-for-like on SARIMA's 3 series (MASE): Prophet 0.793, SARIMA 0.838, LightGBM
 | Control limits (k=2.5) | 0.824 | 0.84 | 0.832 |
 | Isolation Forest (5% contamination) | 0.527 | 0.96 | 0.681 |
 
-- Control limits give cleaner flags (42 true and 9 false positives). Isolation Forest catches nearly everything (48 of 50) but also flags about 43 clean rows, because its 5% contamination sets a threshold that flags about 5% of clean data by construction.
-- Control limits are centered on each series' clean mean residual, so a constant forecast bias is not flagged as an anomaly.
-- Scores reflect how detectable injected anomalies are, not performance on real incidents.
+- Control limits: 42 true and 9 false positives. They are centered on each series' clean mean residual, so a constant forecast bias is not flagged.
+- Isolation Forest: 48 of 50 caught, but about 43 clean rows flagged, since 5% contamination flags about 5% of clean data by construction.
+- Scores measure how detectable injected anomalies are, not performance on real incidents.
 
-**Cost of error (illustrative, USD, holdout):** XGBoost about $224,480 and LightGBM about $225,702, within 0.5% of each other. These use assumed per-unit margins, not P&L data (see Known limitations). XGBoost's total absolute error is slightly lower (321,086 vs 323,350 units), while LightGBM's per-series MASE is slightly lower, because MASE weights every series equally and cost weights by volume.
+**Cost of error (illustrative, USD, holdout):** XGBoost about $224,480 and LightGBM about $225,702, a gap of about 0.5%. XGBoost has slightly lower total absolute error (321,086 vs 323,350 units) while LightGBM has slightly lower mean MASE, because MASE weights series equally and cost weights by volume.
 
 ## Tech stack
 
-- **Modeling:** Prophet, statsmodels (SARIMAX), LightGBM, XGBoost, scikit-learn (IsolationForest)
-- **Experiment tracking:** MLflow via DagsHub
-- **Dashboard:** Streamlit + Altair (ships with Streamlit, so no extra dependency over `st.bar_chart`/`st.line_chart`)
-- **Storage:** Supabase (Postgres)
-- **LLM narrative:** Groq / NVIDIA NIM / Google Gemini, with automatic fallback
+| Layer | Tools |
+|---|---|
+| Modeling | Prophet, statsmodels (SARIMAX), LightGBM, XGBoost, scikit-learn (IsolationForest) |
+| Experiment tracking | MLflow via DagsHub |
+| Dashboard | Streamlit, Altair |
+| Storage | Supabase (Postgres) |
+| LLM narrative | Groq, NVIDIA NIM, Google Gemini, with automatic fallback |
 
 ## Project structure
 
@@ -125,38 +127,29 @@ demand-lens/
 ├── tests/                                52 tests, see Testing
 ├── .env.example                          LLM keys, Supabase URL + key, DagsHub token + repo
 ├── .gitignore
-├── requirements.txt                      dashboard runtime dependencies
-├── requirements-dev.txt                  adds pytest, scikit-learn and nbformat
+├── requirements.txt                      dashboard runtime and test dependencies
 └── README.md
 ```
 
-## Getting started
+## Setup
 
-### 1. Kaggle phase
+**1. Kaggle.** Run notebooks `01_eda` to `05_anomaly_detection` in order, attaching upstream outputs as described in [`kaggle/kaggle_setup.md`](kaggle/kaggle_setup.md). Notebooks find inputs by filename, so attach exactly one version of each. Download these 10 files from the latest run of each notebook into `kaggle_outputs/` at the repo root (git-ignored): `subset_config.json`, `stationarity_results.csv`, `demand_pattern_classification.csv`, `prophet_results.csv`, `sarima_results.csv`, `ml_results.csv`, `final_holdout_predictions.parquet`, `anomaly_results.parquet`, `anomaly_eval_metrics.csv`, `cost_of_error.json`.
 
-Run notebooks `01_eda` to `05_anomaly_detection` in order on Kaggle, attaching upstream outputs as described in `kaggle/kaggle_setup.md` (inputs are found by filename, so attach exactly one version of each). Then download these 10 files from the latest run of each notebook into `kaggle_outputs/` at the repo root, so runs are never mixed: `subset_config.json`, `stationarity_results.csv`, `demand_pattern_classification.csv`, `prophet_results.csv`, `sarima_results.csv`, `ml_results.csv`, `final_holdout_predictions.parquet`, `anomaly_results.parquet`, `anomaly_eval_metrics.csv`, `cost_of_error.json`.
-
-### 2. Local dependencies
-
-Python 3.10 or newer.
+**2. Dependencies.**
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 ```
 
-This adds `pytest`, `scikit-learn` and `nbformat` to the runtime dependencies. For runtime only, use `requirements.txt`.
-
-### 3. Environment variables
+**3. Environment.**
 
 ```bash
 cp .env.example .env
 ```
 
-Set at least one LLM key (`GROQ_API_KEY` / `NIM_API_KEY` / `GEMINI_API_KEY`) and your Supabase **secret** key (server-side, bypasses row level security). `DAGSHUB_TOKEN` / `DAGSHUB_REPO` are optional; without them only Forecast Explorer's "Experiment history" section is empty.
+Set at least one LLM key (`GROQ_API_KEY`, `NIM_API_KEY`, `GEMINI_API_KEY`), plus `SUPABASE_URL` and `SUPABASE_KEY` (the secret key, which bypasses row level security). `DAGSHUB_TOKEN` and `DAGSHUB_REPO` are optional; without them only the "Experiment history" section of Forecast Explorer is empty.
 
-### 4. Supabase tables
-
-Run in the Supabase SQL editor:
+**4. Supabase tables.** Run in the SQL editor:
 
 ```sql
 create table reports (
@@ -200,15 +193,15 @@ alter table forecast_runs enable row level security;
 alter table anomaly_flags enable row level security;
 ```
 
-With row level security enabled and no policies, the public anon key cannot access these tables. The logging buttons upsert on the unique keys, so repeated clicks update rows (and refresh `created_at`) instead of duplicating them. Reports are append-only.
+With RLS enabled and no policies, the public anon key cannot read these tables. The logging buttons upsert on the unique keys, so repeated clicks update rows (and refresh `created_at`) instead of duplicating them. Reports are append-only.
 
-## Running it
+**5. Run.**
 
 ```bash
 streamlit run dashboard/app.py
 ```
 
-Works from any directory (paths resolve against the repo root). Pipeline-derived numbers come from `kaggle_outputs/`; only logged history comes from Supabase and run history from DagsHub. `src/utils/results.py` drives both the dashboard and the LLM facts, so they agree on the selected model and every comparison figure.
+Paths resolve against the repo root, so it works from any directory. Pipeline numbers come from `kaggle_outputs/`, logged history from Supabase, and run history from DagsHub. `src/utils/results.py` feeds both the dashboard and the LLM facts, so they agree on the selected model and every comparison figure.
 
 ## Testing
 
@@ -216,28 +209,15 @@ Works from any directory (paths resolve against the repo root). Pipeline-derived
 pytest tests/ -v
 ```
 
-After changing `src/utils/metrics.py`, run `python scripts/sync_notebook_metrics.py`. It rewrites `mape`, `wape` and `mase` in notebooks 03 and 04 (which cannot import `src`), and a test fails if they drift.
+Notebooks 03 and 04 run on Kaggle and cannot import `src`, so they carry copies of `mape`, `wape` and `mase`. After changing `src/utils/metrics.py`, run `python scripts/sync_notebook_metrics.py`; a test fails if the copies drift.
 
-52 tests across 8 files:
-
-- `test_metrics.py`: metric correctness and degenerate inputs (all-zero actuals, short or constant training series return NaN)
-- `test_grounding_check.py`: claim extraction, tolerances, percent and currency typing, list markers, matched-fact keys, reports with no numeric claims
-- `test_config_consistency.py`: config values compared against the constants and defaults actually in the notebooks (parsed with `ast`): horizon, folds, activation, anomaly parameters, cost table, every ML lag at least the horizon, theme colors vs. dashboard tokens
-- `test_notebook_metrics_sync.py`: drift between `src/utils/metrics.py` and its notebook copies
-- `test_notebooks_valid.py`: each `.ipynb` is a real notebook, valid against the nbformat schema with unique cell ids
-- `test_notebook_smoke.py`: notebook functions on synthetic data: no in-window leakage into features, per-series metric scoring, fold construction (identical in notebooks 03 and 04), anomaly injection scale, clean-reference scaling, Isolation Forest not capped by contamination, control limits centered on the clean mean, `run_fold` rejecting unknown models
-- `test_results.py`: CV-based model selection (never from holdout rows), series scope per model, full-scope best model, like-for-like restriction
-- `test_narrative.py`: fact building, `config` argument honored, no retry on permanent provider errors, one retry on transient ones, API keys redacted from recorded errors
+Beyond unit tests for metrics, model selection, grounding and provider retry, the suite parses the notebooks with `ast` to check that `config.yaml` matches their constants (horizon, folds, anomaly parameters, lag-vs-horizon), validates each `.ipynb` against the nbformat schema, and runs notebook functions on synthetic data to check leakage, fold construction and anomaly injection.
 
 ## Known limitations
 
-- **Backtest only.** Every model is scored on a 15-day holdout with known actuals.
-- **Known-future regressors.** `onpromotion` and `is_holiday` are assumed known at forecast time; promotion plans may not exist 15 days ahead.
-- **National holidays only.** Regional and local holidays are not captured.
-- **Zero-filled gaps.** Days absent from `train.csv` become zero sales and promotions, assuming closed stores.
-- **SARIMA covers 3 series** (CPU-bound grid search), so it is only comparable with the other models on those series; see the like-for-like table.
-- **Direct multi-step ML forecasts** (lags of at least 21 days, horizon-shifted rolling features) avoid leakage but skip roughly the last two weeks before the forecast origin. Expect lower accuracy than a one-step-ahead model; Prophet and SARIMA also forecast the window blind.
-- **MASE uses an in-sample scale:** each series' training-period seasonal-naive error, not a naive forecast on the holdout.
-- **Cost-per-unit figures are illustrative**, based on published grocery-retail margin benchmarks, not this business's P&L.
-- **The grounding check is regex-based.** It misses paraphrases with no literal number and flags correct numbers absent from the facts. It matches each claim to the numerically closest fact of a compatible type (percent, currency, plain), not necessarily the one it refers to, so a wrong figure can still ground against an unrelated correct one. Reports with no numeric claims show as unverifiable.
-- **Anomaly evaluation is synthetic**, and flags on the real holdout (fit and scored on the same data) have no ground truth.
+- **Backtest only.** 15-day holdout with known actuals. `onpromotion` and `is_holiday` are assumed known at forecast time, though promotion plans may not exist 15 days ahead.
+- **Data handling.** National holidays only. Days missing from `train.csv` become zero sales and promotions (closed stores assumed).
+- **Model comparability.** SARIMA covers 3 series (CPU-bound grid search), so use the like-for-like table. Direct multi-step ML forecasts avoid leakage but skip about the last two weeks before the origin, so they are less accurate than one-step models. Prophet and SARIMA also forecast blind.
+- **Illustrative costs.** Per-unit costs are assumed grocery margins, not this business's P&L.
+- **Regex grounding check.** It misses paraphrases without a literal number, flags correct numbers absent from the facts, and matches each claim to the closest fact of a compatible type, so a wrong figure can ground against an unrelated correct one. Reports with no numeric claims show as unverifiable.
+- **Synthetic anomaly evaluation.** Flags on the real holdout (fit and scored on the same data) have no ground truth.
