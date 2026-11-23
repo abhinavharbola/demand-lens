@@ -2,7 +2,7 @@
 
 **Retail Demand Forecasting & Anomaly Benchmark**
 
-A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost across 60 retail series using expanding-window walk-forward cross-validation. It uses Kaggle’s free notebooks for training, Supabase’s free Postgres tier for storage, and free-tier Groq/NIM/Gemini APIs for automated reporting with provider fallback.
+A retail demand forecasting and anomaly detection pipeline that benchmarks Prophet, SARIMA, LightGBM, and XGBoost across 60 retail series from the Kaggle Store Sales - Time Series Forecasting data using expanding-window walk-forward cross-validation. It uses Kaggle’s free notebooks for training, Supabase’s free Postgres tier for storage, and free-tier Groq/NIM/Gemini APIs for automated reporting with provider fallback.
 
 The project separates heavy computation from a lightweight local Streamlit dashboard. The LLM generates narrative reports and verifies every numeric claim against the original source data before displaying it. Reports are automatically saved to Supabase and can be downloaded as Markdown, including previous reports from the dashboard’s history.
 
@@ -15,6 +15,10 @@ The project separates heavy computation from a lightweight local Streamlit dashb
 </p>
 
 > Additional screenshots in [`assets/`](assets/), one per dashboard view.
+
+## Data
+
+Source: the Kaggle competition [Store Sales - Time Series Forecasting](https://www.kaggle.com/competitions/store-sales-time-series-forecasting), which provides daily sales by store and product family for the grocery retailer Corporacion Favorita, along with promotions, holidays and oil prices. The project models a 60-series subset on a daily grid. Check the competition's rules and terms before reusing the data.
 
 ## Architecture
 
